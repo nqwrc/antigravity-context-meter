@@ -1,0 +1,5 @@
+.vscode/**
+.vscode-test/**
+STATUS.md
+.gitignore
+*.vsix
