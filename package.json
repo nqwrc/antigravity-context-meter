@@ -1,0 +1,74 @@
+{
+  "name": "antigravity-context-meter",
+  "displayName": "Antigravity Context Window Meter",
+  "description": "Real-time context window usage meter and token tracker for Google Antigravity IDE with per-project scoping",
+  "version": "1.0.0",
+  "publisher": "nqwrc",
+  "author": {
+    "name": "Nicola Pandolfi"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nqwrc/antigravity-context-meter.git"
+  },
+  "keywords": [
+    "antigravity",
+    "gemini",
+    "context-window",
+    "token-counter",
+    "token-meter",
+    "ai-assistant",
+    "status-bar"
+  ],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "scripts": {
+    "lint": "node -c extension.js"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "antigravityContextMeter.showDetails",
+        "title": "Antigravity: Show Context Window Details"
+      },
+      {
+        "command": "antigravityContextMeter.openTranscript",
+        "title": "Antigravity: Open Active Session Transcript"
+      },
+      {
+        "command": "antigravityContextMeter.revealSessionFolder",
+        "title": "Antigravity: Reveal Session Folder in OS File Manager"
+      }
+    ],
+    "configuration": {
+      "title": "Antigravity Context Meter",
+      "properties": {
+        "antigravityContextMeter.modelContextLimit": {
+          "type": "number",
+          "default": 1000000,
+          "description": "Maximum context window tokens for the active model (default: 1,000,000 for Gemini 3.7 Flash)."
+        },
+        "antigravityContextMeter.refreshIntervalSeconds": {
+          "type": "number",
+          "default": 3,
+          "description": "Interval in seconds to check for active conversation changes."
+        },
+        "antigravityContextMeter.warningThresholdPercent": {
+          "type": "number",
+          "default": 75,
+          "description": "Context percentage threshold to display warning status color."
+        }
+      }
+    }
+  }
+}
