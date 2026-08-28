@@ -4,6 +4,7 @@
   "description": "Real-time context window usage meter and token tracker for Google Antigravity IDE with per-project scoping",
   "version": "1.0.0",
   "publisher": "nqwrc",
+  "icon": "icon.png",
   "author": {
     "name": "Nicola Pandolfi"
   },
@@ -33,13 +34,18 @@
   ],
   "main": "./extension.js",
   "scripts": {
-    "lint": "node -c extension.js"
+    "lint": "node -c extension.js",
+    "test": "node test.js"
   },
   "contributes": {
     "commands": [
       {
         "command": "antigravityContextMeter.showDetails",
         "title": "Antigravity: Show Context Window Details"
+      },
+      {
+        "command": "antigravityContextMeter.refresh",
+        "title": "Antigravity: Refresh Context Telemetry"
       },
       {
         "command": "antigravityContextMeter.openTranscript",

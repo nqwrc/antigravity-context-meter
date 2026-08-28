@@ -151,6 +151,29 @@ function findConversationForCurrentProject() {
   }
 }
 
+const MODEL_LIMITS_MAP = {
+  "gemini 3.7 flash": 1000000,
+  "gemini 3.6 flash": 1000000,
+  "gemini 3.5 flash": 1000000,
+  "gemini 3.1 pro": 1000000,
+  "claude sonnet 4.6": 200000,
+  "claude opus 4.6": 200000,
+  "gpt-oss 120b": 128000
+};
+
+function detectModelName(content) {
+  if (!content || typeof content !== "string") return null;
+  const low = content.toLowerCase();
+  if (low.includes("gemini 3.7 flash (high)") || low.includes("gemini 3.7 flash")) return "Gemini 3.7 Flash";
+  if (low.includes("gemini 3.6 flash")) return "Gemini 3.6 Flash";
+  if (low.includes("gemini 3.5 flash")) return "Gemini 3.5 Flash";
+  if (low.includes("gemini 3.1 pro")) return "Gemini 3.1 Pro";
+  if (low.includes("claude sonnet 4.6")) return "Claude Sonnet 4.6";
+  if (low.includes("claude opus 4.6")) return "Claude Opus 4.6";
+  if (low.includes("gpt-oss 120b")) return "GPT-OSS 120B";
+  return null;
+}
+
 function parseTranscript(logPath) {
   if (!fs.existsSync(logPath)) {
     return null;
@@ -161,32 +184,81 @@ function parseTranscript(logPath) {
     const lines = content.trim().split("\n").filter(Boolean);
 
     let totalChars = 0;
+    let systemChars = 0;
+    let userChars = 0;
+    let assistantChars = 0;
+    let thinkingChars = 0;
+    let toolPayloadChars = 0;
     let userTurns = 0;
     let assistantTurns = 0;
     let toolCalls = 0;
     let truncatedCount = 0;
+    let checkpointCount = 0;
+    let detectedModel = null;
+    const toolUsageMap = {};
 
     for (const line of lines) {
       try {
         const entry = JSON.parse(line);
+
+        if (!detectedModel && entry.content) {
+          detectedModel = detectModelName(entry.content);
+        }
+
         if (entry.content && typeof entry.content === "string") {
           totalChars += entry.content.length;
         }
+
         if (entry.type === "USER_INPUT") {
           userTurns++;
+          if (entry.content) userChars += entry.content.length;
         } else if (entry.type === "PLANNER_RESPONSE" || entry.source === "MODEL") {
           assistantTurns++;
+          if (entry.content) assistantChars += entry.content.length;
+          if (entry.thinking) {
+            thinkingChars += entry.thinking.length;
+            totalChars += entry.thinking.length;
+          }
+        } else if (entry.source === "SYSTEM") {
+          if (entry.content) {
+            systemChars += entry.content.length;
+            if (entry.type === "CHECKPOINT" || entry.content.trim().startsWith("{{ CHECKPOINT")) {
+              checkpointCount++;
+            }
+          }
         }
+
         if (entry.tool_calls && Array.isArray(entry.tool_calls)) {
           toolCalls += entry.tool_calls.length;
+          for (const tc of entry.tool_calls) {
+            const toolName = tc.name || tc.toolAction || "unknown";
+            toolUsageMap[toolName] = (toolUsageMap[toolName] || 0) + 1;
+            if (tc.args) {
+              const argStr = JSON.stringify(tc.args);
+              toolPayloadChars += argStr.length;
+              totalChars += argStr.length;
+            }
+          }
         }
+
         if (entry.is_truncated) {
           truncatedCount++;
         }
       } catch (e) {}
     }
 
-    const estimatedTokens = Math.round(totalChars / 3.8);
+    const systemTokens = Math.round(systemChars / 3.8);
+    const userTokens = Math.round(userChars / 3.8);
+    const assistantTokens = Math.round((assistantChars + thinkingChars) / 3.8);
+    const toolTokens = Math.round(toolPayloadChars / 3.8);
+    const estimatedTokens = Math.max(
+      Math.round(totalChars / 3.8),
+      systemTokens + userTokens + assistantTokens + toolTokens
+    );
+
+    const topTools = Object.entries(toolUsageMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
 
     return {
       lines: lines.length,
@@ -194,8 +266,15 @@ function parseTranscript(logPath) {
       assistantTurns,
       toolCalls,
       truncatedCount,
+      checkpointCount,
       totalChars,
+      systemTokens,
+      userTokens,
+      assistantTokens,
+      toolTokens,
       estimatedTokens,
+      detectedModel: detectedModel || "Gemini Default",
+      topTools,
       fileSizeBytes: fs.statSync(logPath).size
     };
   } catch (err) {
@@ -205,13 +284,14 @@ function parseTranscript(logPath) {
 
 function updateStatusBar() {
   const config = vscode.workspace.getConfiguration("antigravityContextMeter");
-  const maxTokens = config.get("modelContextLimit", 1000000);
+  let maxTokens = config.get("modelContextLimit", 1000000);
   const warnThreshold = config.get("warningThresholdPercent", 75);
 
   const conv = findConversationForCurrentProject();
   if (!conv) {
     statusBarItem.text = "$(graph) Context: Idle";
     statusBarItem.tooltip = "No active Antigravity session found for this project.";
+    statusBarItem.backgroundColor = undefined;
     statusBarItem.show();
     return;
   }
@@ -226,8 +306,18 @@ function updateStatusBar() {
   if (!stats) {
     return;
   }
+
+  // If detected model has known capacity and user hasn't overridden default
+  if (stats.detectedModel && maxTokens === 1000000) {
+    const key = stats.detectedModel.toLowerCase();
+    if (MODEL_LIMITS_MAP[key]) {
+      maxTokens = MODEL_LIMITS_MAP[key];
+    }
+  }
+
   lastStats = {
     ...stats,
+    maxTokens,
     convId: conv.id,
     projectName: conv.projectName,
     workspaceRoot: conv.workspaceRoot,
@@ -235,12 +325,16 @@ function updateStatusBar() {
     logPath: conv.logPath
   };
 
-  const pct = ((stats.estimatedTokens / maxTokens) * 100).toFixed(1);
+  const pctNum = (stats.estimatedTokens / maxTokens) * 100;
+  const pct = pctNum.toFixed(1);
   const tokenStr = formatNumber(stats.estimatedTokens);
   const maxStr = formatNumber(maxTokens);
   const tag = conv.projectName;
 
-  if (parseFloat(pct) >= warnThreshold) {
+  if (pctNum >= 85) {
+    statusBarItem.text = `$(error) Context (${tag}): ${tokenStr} / ${maxStr} (${pct}%)`;
+    statusBarItem.backgroundColor = new vscode.ThemeColor("statusBarItem.errorBackground");
+  } else if (pctNum >= warnThreshold || pctNum >= 60) {
     statusBarItem.text = `$(warning) Context (${tag}): ${tokenStr} / ${maxStr} (${pct}%)`;
     statusBarItem.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
   } else {
@@ -253,11 +347,24 @@ function updateStatusBar() {
   tooltip.appendMarkdown(`### Antigravity Context Window — ${tag}\n\n`);
   tooltip.appendMarkdown(`| Metric | Value |\n|---|---|\n`);
   tooltip.appendMarkdown(`| **Project** | **${tag}** |\n`);
+  tooltip.appendMarkdown(`| **Active Model** | **${stats.detectedModel}** |\n`);
   tooltip.appendMarkdown(`| **Tokens (est.)** | **${stats.estimatedTokens.toLocaleString()}** / ${maxTokens.toLocaleString()} |\n`);
   tooltip.appendMarkdown(`| **Context Used** | **${pct}%** |\n`);
   tooltip.appendMarkdown(`| **User Turns** | ${stats.userTurns} |\n`);
   tooltip.appendMarkdown(`| **Tool Executions** | ${stats.toolCalls} |\n`);
   tooltip.appendMarkdown(`| **Transcript Size** | ${(stats.fileSizeBytes / 1024).toFixed(1)} KB |\n\n`);
+
+  tooltip.appendMarkdown(`#### Token Composition\n\n`);
+  tooltip.appendMarkdown(`| Component | Est. Tokens |\n|---|---|\n`);
+  tooltip.appendMarkdown(`| System / Instructions | ${stats.systemTokens.toLocaleString()} |\n`);
+  tooltip.appendMarkdown(`| User Inputs | ${stats.userTokens.toLocaleString()} |\n`);
+  tooltip.appendMarkdown(`| Agent Output & Thinking | ${stats.assistantTokens.toLocaleString()} |\n`);
+  tooltip.appendMarkdown(`| Tool Argument Payloads | ${stats.toolTokens.toLocaleString()} |\n\n`);
+
+  if (stats.topTools && stats.topTools.length > 0) {
+    tooltip.appendMarkdown(`**Top Tools**: ${stats.topTools.map(t => `\`${t[0]}\` (${t[1]})`).join(", ")}\n\n`);
+  }
+
   if (stats.truncatedCount > 0) {
     tooltip.appendMarkdown(`> [!WARNING]\n> ${stats.truncatedCount} steps were compacted in transcript.\n\n`);
   }
@@ -305,24 +412,26 @@ function activate(context) {
       return;
     }
 
-    const config = vscode.workspace.getConfiguration("antigravityContextMeter");
-    const maxTokens = config.get("modelContextLimit", 1000000);
+    const maxTokens = lastStats.maxTokens || 1000000;
     const pct = ((lastStats.estimatedTokens / maxTokens) * 100).toFixed(2);
+    const topToolsStr = lastStats.topTools && lastStats.topTools.length > 0
+      ? lastStats.topTools.map(t => `${t[0]} (${t[1]})`).join(", ")
+      : "None";
 
     const items = [
       {
-        label: `$(project) Project: ${lastStats.projectName}`,
+        label: `$(project) Project: ${lastStats.projectName} [${lastStats.detectedModel}]`,
         description: `Workspace: ${lastStats.workspaceRoot}`,
         action: "none"
       },
       {
         label: `$(graph) Context Window: ${lastStats.estimatedTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens (${pct}%)`,
-        description: "Active model token usage",
+        description: `System: ${lastStats.systemTokens.toLocaleString()} | User: ${lastStats.userTokens.toLocaleString()} | Asst: ${lastStats.assistantTokens.toLocaleString()} | Tools: ${lastStats.toolTokens.toLocaleString()}`,
         action: "none"
       },
       {
-        label: `$(comment-discussion) Activity: ${lastStats.userTurns} user turns, ${lastStats.toolCalls} tool executions`,
-        description: `${lastStats.lines} total transcript events`,
+        label: `$(tools) Tool Executions: ${lastStats.toolCalls} calls across ${lastStats.lines} events`,
+        description: `Top: ${topToolsStr}`,
         action: "none"
       },
       {
@@ -374,7 +483,14 @@ function activate(context) {
     }
   });
 
-  context.subscriptions.push(showDetailsCmd, openTranscriptCmd, revealFolderCmd);
+  const refreshCmd = vscode.commands.registerCommand("antigravityContextMeter.refresh", () => {
+    updateStatusBar();
+    if (typeof vscode.window.setStatusBarMessage === "function") {
+      vscode.window.setStatusBarMessage("$(sync~spin) Antigravity Context telemetry refreshed", 2000);
+    }
+  });
+
+  context.subscriptions.push(showDetailsCmd, refreshCmd, openTranscriptCmd, revealFolderCmd);
 
   // Initial update
   updateStatusBar();
@@ -406,3 +522,4 @@ module.exports = {
   activate,
   deactivate
 };
+
