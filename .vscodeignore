@@ -3,3 +3,5 @@
 STATUS.md
 .gitignore
 *.vsix
+test.js
+.github/**

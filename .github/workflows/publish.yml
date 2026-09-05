@@ -1,0 +1,51 @@
+name: Publish Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build, Verify & Publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify syntax
+        run: node -c extension.js
+
+      - name: Run test suite
+        run: node test.js
+
+      - name: Package extension
+        run: npx --yes @vscode/vsce package --no-git-tag-version --allow-star-activation
+
+      - name: Publish to VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --yes @vscode/vsce publish -p $VSCE_PAT
+
+      - name: Publish to Open VSX Registry
+        if: env.OVSX_PAT != ''
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --yes ovsx publish antigravity-context-meter-*.vsix -p $OVSX_PAT
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: antigravity-context-meter-*.vsix
+          generate_release_notes: true

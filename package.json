@@ -13,6 +13,15 @@
     "type": "git",
     "url": "https://github.com/nqwrc/antigravity-context-meter.git"
   },
+  "homepage": "https://github.com/nqwrc/antigravity-context-meter#readme",
+  "bugs": {
+    "url": "https://github.com/nqwrc/antigravity-context-meter/issues"
+  },
+  "pricing": "Free",
+  "galleryBanner": {
+    "color": "#1e1e1e",
+    "theme": "dark"
+  },
   "keywords": [
     "antigravity",
     "gemini",
@@ -35,7 +44,8 @@
   "main": "./extension.js",
   "scripts": {
     "lint": "node -c extension.js",
-    "test": "node test.js"
+    "test": "node test.js",
+    "package": "npx --yes @vscode/vsce package --no-git-tag-version --allow-star-activation"
   },
   "contributes": {
     "commands": [
