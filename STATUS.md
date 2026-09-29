@@ -3,7 +3,7 @@
 state: next
 goal: infra
 remote: github-public
-updated: 2026-09-29
+updated: 2026-09-30
 stale-after-days: 30
 
 ## kpi
@@ -22,5 +22,4 @@ stale-after-days: 30
 - Before the tag: align the CHANGELOG date with the release day and check whether Antigravity 2.x already shows the context natively.
 
 ## blockers
-- The repository answers 404 to anonymous requests while `remote` says github-public: the store links break until it is public (`gh repo view nqwrc/antigravity-context-meter --json visibility`), or `remote` changes to github-private.
 - No Open VSX or Marketplace account, and no PAT, exists yet (external setup by the owner).
