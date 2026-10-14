@@ -1,7 +1,7 @@
 # status
 
 state: next
-goal: infra
+goal: G1
 remote: github-public
 updated: 2026-10-14
 stale-after-days: 30
