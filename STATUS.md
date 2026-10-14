@@ -3,7 +3,7 @@
 state: next
 goal: infra
 remote: github-public
-updated: 2026-09-30
+updated: 2026-10-14
 stale-after-days: 30
 
 ## kpi
@@ -14,12 +14,14 @@ stale-after-days: 30
 
 ## focus
 - Release workflow defect found on review: the two publish steps had `if: env.X != ''` with `env` declared in the same step, so they were skipped without a warning and the run stayed green. The package builds (vsce 4.0.0, 12.58 KB) and the smoke test passes; the rest of the review is in the local file `NOTTE-2026-09-29.md`, which stays out of this public repo.
-- Three patches in `patches/` (untracked, not applied, tested with `git apply --check`, lint, test and package): 0001 release workflow (job-level secrets, Node 22, pinned vsce and ovsx, Node 24 actions, tag must equal the package.json version, Open VSX and Marketplace independent), 0002 store metadata (store README, categories, keywords, untrusted workspaces), 0003 amber threshold fix (`warningThresholdPercent` above 60), Gemini 3.8 Flash and status bar tests (9 checks). No real run on GitHub yet.
+- Patches 0001-0003 applied on the local branch `feature/release-1.0.0` (commit 76845d2, not merged, not pushed): lint OK, 9 test checks pass, `vsce` 4.0.0 packages 8 files, 12.94 KB, store README in the .vsix. No real run on GitHub yet.
 - Open technical points: the context limit per model in the table is an assumption, to check with a real Antigravity session; project matching works on Windows paths only, other systems fall back to the latest session.
 
 ## next
-- Apply the three patches on a work branch (`NOTTE-2026-09-29.md` section 2), then publish on Open VSX first (Eclipse account, namespace `nqwrc`, token `nqwrc/OVSX_PAT`), the Marketplace publisher and PAT before 2026-11-30 (global Azure DevOps PATs stop working on 2026-12-01), the two GitHub secrets, a dry run of the workflow and the tag v1.0.0.
+- Owner: Open VSX first (Eclipse account with GitHub user nqwrc, Publisher Agreement, token stored as `nqwrc/OVSX_PAT`, `ovsx create-namespace nqwrc`), then the `OVSX_PAT` GitHub secret.
+- Owner, **deadline 2026-11-30**: Marketplace publisher `nqwrc` and an Azure DevOps PAT (All accessible organizations, Marketplace Manage, expiry <= 2026-11-30; global PATs stop working on 2026-12-01), stored as `nqwrc/VSCE_PAT`, then the `VSCE_PAT` GitHub secret.
 - Before the tag: align the CHANGELOG date with the release day and check whether Antigravity 2.x already shows the context natively.
+- Push `feature/release-1.0.0`, dry run of the workflow (manual, `publish` unchecked), merge into main, then tag v1.0.0 and push the tag.
 
 ## blockers
 - No Open VSX or Marketplace account, and no PAT, exists yet (external setup by the owner).
