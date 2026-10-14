@@ -1,51 +1,101 @@
 name: Publish Extension
 
+# Release: push a tag v<version> (must equal "version" in package.json).
+# Manual run (workflow_dispatch): builds, tests and packages, and uploads the
+# .vsix as a workflow artifact; it publishes only if "publish" is ticked.
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to the registries (otherwise build and package only)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+
+env:
+  # vsce >= 4 and ovsx >= 1.2 require Node >= 22. Versions are pinned so a
+  # release never changes behaviour because a new tool version came out.
+  VSCE_VERSION: '4.0.0'
+  OVSX_VERSION: '1.2.0'
 
 jobs:
   publish:
     name: Build, Verify & Publish
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # `secrets` cannot be read in an `if:`, and a step's own `env:` is not
+      # visible to that same step's `if:`. The secrets are therefore copied
+      # into job-level env, which `if:` can read. An unset secret is an empty string.
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
+      PUBLISH_ENABLED: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish == true }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Verify syntax
-        run: node -c extension.js
+        run: npm run lint
 
       - name: Run test suite
-        run: node test.js
+        run: npm test
+
+      - name: Check tag matches package.json version
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME}" != "v${PKG_VERSION}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${PKG_VERSION}"
+            exit 1
+          fi
 
       - name: Package extension
-        run: npx --yes @vscode/vsce package --no-git-tag-version --allow-star-activation
+        id: package
+        run: |
+          npm run package
+          VSIX="$(ls -1 ./*.vsix | head -n 1)"
+          echo "Packaged: ${VSIX}"
+          echo "VSIX=${VSIX#./}" >> "$GITHUB_ENV"
 
-      - name: Publish to VS Code Marketplace
-        if: env.VSCE_PAT != ''
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx --yes @vscode/vsce publish -p $VSCE_PAT
+      - name: Upload package as workflow artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: vsix
+          path: '*.vsix'
+          if-no-files-found: error
 
-      - name: Publish to Open VSX Registry
-        if: env.OVSX_PAT != ''
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npx --yes ovsx publish antigravity-context-meter-*.vsix -p $OVSX_PAT
+      - name: Warn about missing publishing secrets
+        if: ${{ env.PUBLISH_ENABLED == 'true' }}
+        run: |
+          [ -n "${OVSX_PAT}" ] || echo "::warning title=OVSX_PAT missing::Open VSX publishing is skipped: repository secret OVSX_PAT is not set."
+          [ -n "${VSCE_PAT}" ] || echo "::warning title=VSCE_PAT missing::VS Code Marketplace publishing is skipped: repository secret VSCE_PAT is not set."
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        uses: softprops/action-gh-release@v3
         with:
-          files: antigravity-context-meter-*.vsix
+          files: ${{ env.VSIX }}
           generate_release_notes: true
+
+      # Open VSX first: it is the registry Antigravity and the other VS Code
+      # forks install from. Each publish step runs even if the other failed
+      # (!cancelled()), but never if packaging failed. Tokens travel in the
+      # environment (OVSX_PAT / VSCE_PAT are read by the tools themselves),
+      # never on the command line. --skip-duplicate makes a re-run harmless.
+      - name: Publish to Open VSX Registry
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && env.PUBLISH_ENABLED == 'true' && env.OVSX_PAT != '' }}
+        run: npx --yes "ovsx@${OVSX_VERSION}" publish "${VSIX}" --skip-duplicate
+
+      - name: Publish to VS Code Marketplace
+        if: ${{ !cancelled() && steps.package.outcome == 'success' && env.PUBLISH_ENABLED == 'true' && env.VSCE_PAT != '' }}
+        run: npx --yes "@vscode/vsce@${VSCE_VERSION}" publish --packagePath "${VSIX}" --skip-duplicate

@@ -152,6 +152,7 @@ function findConversationForCurrentProject() {
 }
 
 const MODEL_LIMITS_MAP = {
+  "gemini 3.8 flash": 1000000,
   "gemini 3.7 flash": 1000000,
   "gemini 3.6 flash": 1000000,
   "gemini 3.5 flash": 1000000,
@@ -164,6 +165,7 @@ const MODEL_LIMITS_MAP = {
 function detectModelName(content) {
   if (!content || typeof content !== "string") return null;
   const low = content.toLowerCase();
+  if (low.includes("gemini 3.8 flash")) return "Gemini 3.8 Flash";
   if (low.includes("gemini 3.7 flash (high)") || low.includes("gemini 3.7 flash")) return "Gemini 3.7 Flash";
   if (low.includes("gemini 3.6 flash")) return "Gemini 3.6 Flash";
   if (low.includes("gemini 3.5 flash")) return "Gemini 3.5 Flash";
@@ -334,7 +336,7 @@ function updateStatusBar() {
   if (pctNum >= 85) {
     statusBarItem.text = `$(error) Context (${tag}): ${tokenStr} / ${maxStr} (${pct}%)`;
     statusBarItem.backgroundColor = new vscode.ThemeColor("statusBarItem.errorBackground");
-  } else if (pctNum >= warnThreshold || pctNum >= 60) {
+  } else if (pctNum >= warnThreshold) {
     statusBarItem.text = `$(warning) Context (${tag}): ${tokenStr} / ${maxStr} (${pct}%)`;
     statusBarItem.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
   } else {

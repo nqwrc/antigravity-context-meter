@@ -24,10 +24,17 @@
   },
   "keywords": [
     "antigravity",
+    "google antigravity",
     "gemini",
+    "claude",
+    "llm",
+    "context window",
     "context-window",
     "token-counter",
     "token-meter",
+    "tokens",
+    "usage",
+    "monitor",
     "ai-assistant",
     "status-bar"
   ],
@@ -35,17 +42,22 @@
     "vscode": "^1.80.0"
   },
   "categories": [
-    "Other",
-    "Programming Languages"
+    "Machine Learning",
+    "Other"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
   "activationEvents": [
     "onStartupFinished"
   ],
   "main": "./extension.js",
   "scripts": {
     "lint": "node -c extension.js",
-    "test": "node test.js",
-    "package": "npx --yes @vscode/vsce package --no-git-tag-version --allow-star-activation"
+    "test": "node test.js && node test-status-bar.js",
+    "package": "npx --yes @vscode/vsce@4.0.0 package --readme-path README.marketplace.md"
   },
   "contributes": {
     "commands": [

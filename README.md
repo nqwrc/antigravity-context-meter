@@ -15,6 +15,8 @@ Archived if Google Antigravity IDE introduces native, project-scoped token telem
 ## how
 VS Code extension written in vanilla JavaScript (Node.js built-ins) with zero runtime dependencies.
 
+Store listing text (VS Code Marketplace and Open VSX) lives in `README.marketplace.md`, packaged as the extension readme via `vsce --readme-path`; this file stays the project README.
+
 ---
 
 ## Features

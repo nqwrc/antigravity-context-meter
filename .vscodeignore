@@ -5,3 +5,9 @@ STATUS.md
 *.vsix
 test.js
 .github/**
+test-*.js
+icon.svg
+package-lock.json
+patches/**
+NOTTE-*.md
+README.md

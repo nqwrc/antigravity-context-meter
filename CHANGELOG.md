@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the ntigravity-context-meter extension will be documented in this file.
+All notable changes to the antigravity-context-meter extension will be documented in this file.
 
 ## [1.0.0] - 2026-08-27
 
